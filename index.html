@@ -2,14 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Cascada de letras</title>
+<title>Cascada de letras — Jhannara</title>
 <style>
   html, body {
     margin: 0;
     padding: 0;
     width: 100%;
     height: 100%;
-    background: #000000;
+    background: radial-gradient(circle at 50% 20%, #0a0500 0%, #000000 70%);
     overflow: hidden;
   }
   canvas {
@@ -45,74 +45,126 @@ const ctx = canvas.getContext("2d");
 function ajustarTamano() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  inicializarColumnas();
 }
-ajustarTamano();
-window.addEventListener("resize", ajustarTamano);
 
 const tamanoFuente = 22;
-const espacioColumnas = 32;
-let columnas = Math.floor(canvas.width / espacioColumnas);
+const espacioColumnas = 28;
 
-// Cada columna guarda: en qué fila va (y), qué frase le tocó,
-// y en qué letra de esa frase está actualmente.
 let gotas = [];
 
 function elegirFrase() {
   return SIMBOLOS[Math.floor(Math.random() * SIMBOLOS.length)];
 }
 
-for (let i = 0; i < columnas; i++) {
-  gotas.push({
-    y: Math.floor(Math.random() * -20), // arranques escalonados
+// Paleta dorado/ámbar: cada gota tiene su propio matiz para que la cascada
+// no se vea plana, sino con variación de calidez (oro, ámbar, miel, casi blanco).
+const PALETA = [
+  { cabeza: "#FFFFFF", cola: "255, 230, 130" },
+  { cabeza: "#FFF6D8", cola: "255, 221, 90"  },
+  { cabeza: "#FFE9A8", cola: "255, 196, 60"  },
+  { cabeza: "#FFD86B", cola: "255, 178, 40"  },
+  { cabeza: "#FFCB4D", cola: "255, 160, 20"  }
+];
+
+function crearGota(yInicial) {
+  const colores = PALETA[Math.floor(Math.random() * PALETA.length)];
+  return {
+    y: yInicial,
     frase: elegirFrase(),
-    indice: 0
-  });
+    indice: 0,
+    velocidad: 0.55 + Math.random() * 0.85,   // columnas con ritmo propio
+    acumulado: 0,
+    colores: colores,
+    largoCola: 9 + Math.floor(Math.random() * 9), // longitud de la estela
+    parpadeo: Math.random() * Math.PI * 2
+  };
 }
 
+function inicializarColumnas() {
+  const columnas = Math.floor(canvas.width / espacioColumnas);
+  gotas = [];
+  for (let i = 0; i < columnas; i++) {
+    gotas.push(crearGota(Math.floor(Math.random() * -30)));
+  }
+}
+
+ajustarTamano();
+window.addEventListener("resize", ajustarTamano);
+
+let frame = 0;
+
 function dibujar() {
-  // estela negra semitransparente (deja rastro)
-  ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+  frame++;
+
+  // estela negra semitransparente con leve tinte cálido (deja rastro, más cinematográfico)
+  ctx.fillStyle = "rgba(5, 2, 0, 0.10)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.font = tamanoFuente + "px monospace";
+  ctx.font = "600 " + tamanoFuente + "px 'Segoe UI', system-ui, monospace";
   ctx.textAlign = "center";
 
   for (let i = 0; i < gotas.length; i++) {
     const gota = gotas[i];
     const x = i * espacioColumnas + tamanoFuente;
+
+    gota.acumulado += gota.velocidad;
+    if (gota.acumulado < 1) {
+      // todavía no avanza esta vuelta — pero igual dibujamos su estado actual
+    } else {
+      gota.acumulado = 0;
+      gota.indice++;
+      if (gota.indice >= gota.frase.length) {
+        gota.indice = 0;
+      }
+      gota.y++;
+    }
+
     const yPix = gota.y * tamanoFuente;
 
-    // toma la letra actual de la frase (ignora espacios para que no se vean huecos raros)
+    // --- dibuja la cola (caracteres previos con opacidad decreciente) ---
+    for (let c = gota.largoCola; c >= 1; c--) {
+      const yColaPix = yPix - c * tamanoFuente;
+      if (yColaPix < -tamanoFuente || yColaPix > canvas.height + tamanoFuente) continue;
+
+      let idxCola = gota.indice - c;
+      // recorrido circular dentro de la frase
+      idxCola = ((idxCola % gota.frase.length) + gota.frase.length) % gota.frase.length;
+      let letraCola = gota.frase[idxCola];
+      if (letraCola === " ") continue;
+
+      const opacidad = Math.max(0, 1 - c / gota.largoCola) * 0.85;
+      ctx.fillStyle = `rgba(${gota.colores.cola}, ${opacidad.toFixed(3)})`;
+      ctx.shadowBlur = 0;
+      ctx.fillText(letraCola, x, yColaPix);
+    }
+
+    // --- carácter "cabeza": el más brillante, con parpadeo sutil ---
     let letra = gota.frase[gota.indice];
-    if (letra === " ") {
-      letra = "";
+    if (letra !== " ") {
+      const brillo = 0.75 + 0.25 * Math.sin(frame * 0.12 + gota.parpadeo);
+      ctx.fillStyle = gota.colores.cabeza;
+      ctx.shadowColor = `rgba(${gota.colores.cola}, ${brillo})`;
+      ctx.shadowBlur = 16 * brillo;
+      ctx.fillText(letra, x, yPix);
+      ctx.shadowBlur = 0;
     }
-
-    // carácter "cabeza" más brillante
-    ctx.fillStyle = "#FFEE00";
-    ctx.shadowColor = "#FFD700";
-    ctx.shadowBlur = 8;
-    ctx.fillText(letra, x, yPix);
-    ctx.shadowBlur = 0;
-
-    // avanza a la siguiente letra de la frase
-    gota.indice++;
-    if (gota.indice >= gota.frase.length) {
-      gota.indice = 0; // cuando termina la frase, vuelve a empezar (repite en bucle)
-    }
-
-    gota.y++;
 
     // cuando la columna sale de la pantalla, hay chance de reiniciarla arriba con frase nueva
-    if (yPix > canvas.height && Math.random() > 0.975) {
+    if (yPix > canvas.height + gota.largoCola * tamanoFuente && Math.random() > 0.975) {
+      const colores = PALETA[Math.floor(Math.random() * PALETA.length)];
       gota.y = 0;
       gota.frase = elegirFrase();
       gota.indice = 0;
+      gota.velocidad = 0.55 + Math.random() * 0.85;
+      gota.colores = colores;
+      gota.largoCola = 9 + Math.floor(Math.random() * 9);
+      gota.parpadeo = Math.random() * Math.PI * 2;
     }
   }
 }
 
-setInterval(dibujar, 45);
+setInterval(dibujar, 40);
 </script>
 
 </body>
